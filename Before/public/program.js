@@ -9,12 +9,149 @@ Office.initialize = function (reason) {
     $(document).ready(function () {
     // After the DOM is loaded, app-specific code can run.
     // Add any initialization logic to this function.
-	 $("#getGraphAccessTokenButton").click(function () {
-                getOneDriveFiles();
-            });
+         $("#getGraphAccessTokenButton").click(function () {
+         });
+        getOneDriveFiles();
+        console.log(Office.context.mailbox.item)
     });
 }
 
+var timesGetOneDriveFilesHasRun = 0;
+var triedWithoutForceConsent = false;
+var timesMSGraphErrorReceived = false;
+
+function getOneDriveFiles() {
+    timesGetOneDriveFilesHasRun++;
+    triedWithoutForceConsent = true;
+    getDataWithToken({ forceConsent: false });
+}
+
+function getDataWithToken(options) {
+    Office.context.auth.getAccessTokenAsync(options,
+        function (result) {
+            if (result.status === "succeeded") {
+                var accessToken = result.value;
+                getData("/api/values", accessToken);
+                // getData("/me/messages", accessToken);
+            }
+            else {
+                handleClientSideErrors(result);
+            }
+        });
+}
+
+function getData(relativeUrl, accessToken) {
+    $.ajax({
+        url: relativeUrl,
+        headers: { "Authorization": "Bearer " + accessToken },
+        type: "GET"
+    })
+        .done(function (result) {
+            console.log(result);
+            showResult(result);
+        })
+        .fail(function (result) {
+            handleServerSideErrors(result);
+        });
+}
+
+function handleClientSideErrors(result) {
+
+    switch (result.error.code) {
+
+        // TODO2: Handle the case where user is not logged in, or the user cancelled, without responding, a
+        //        prompt to provide a 2nd authentication factor.
+        case 13001:
+            getDataWithToken({ forceAddAccount: true });
+            break;
+
+        // TODO3: Handle the case where the user's sign-in or consent was aborted.
+        case 13002:
+            if (timesGetOneDriveFilesHasRun < 2) {
+                showResult(['Your sign-in or consent was aborted before completion. Please try that operation again.']);
+            } else {
+                logError(result);
+            }
+            break;
+
+        // TODO4: Handle the case where the user is logged in with an account that is neither work or school,
+        //        nor Microsoft Account.
+        case 13003:
+            showResult(['Please sign out of Office and sign in again with a work or school account, or Microsoft Account. Other kinds of accounts, like corporate domain accounts do not work.']);
+            break;
+
+        // TODO5: Handle the case where the Office host has not been authorized to the add-in's web service or
+        //        the user has not granted the service permission to their `profile`.
+        case 13005:
+            getDataWithToken({ forceConsent: true });
+            break;
+
+        // TODO6: Handle an unspecified error from the Office host.
+        case 13006:
+            showResult(['Please save your work, sign out of Office, close all Office applications, and restart this Office application.']);
+            break;
+
+        // TODO7: Handle the case where the Office host cannot get an access token to the add-ins
+        //        web service/application.
+        case 13007:
+            showResult(['That operation cannot be done at this time. Please try again later.']);
+            break;
+
+        // TODO8: Handle the case where the user triggered an operation that calls `getAccessTokenAsync`
+        //        before a previous call of it completed.
+        case 13008:
+            showResult(['Please try that operation again after the current operation has finished.']);
+            break;
+
+        // TODO9: Handle the case where the add-in does not support forcing consent.
+        case 13009:
+            if (triedWithoutForceConsent) {
+                showResult(['Please sign out of Office and sign in again with a work or school account, or Microsoft Account.']);
+            } else {
+                getDataWithToken({ forceConsent: false });
+            }
+            break;
+
+        // TODO10: Log all other client errors.
+        default:
+            logError(result);
+            break;
+    }
+}
+
+function handleServerSideErrors(result) {
+    console.log(result);
+    if (result.responseJSON.error.innerError
+        && result.responseJSON.error.innerError.error_codes
+        && result.responseJSON.error.innerError.error_codes[0] === 50076){
+        getDataWithToken({ authChallenge: result.responseJSON.error.innerError.claims });
+
+    } else if (result.responseJSON.error.innerError
+        && result.responseJSON.error.innerError.error_codes
+        && result.responseJSON.error.innerError.error_codes[0] === 65001){
+        getDataWithToken({ forceConsent: true });
+    } else if (result.responseJSON.error.innerError
+        && result.responseJSON.error.innerError.error_codes
+        && result.responseJSON.error.innerError.error_codes[0] === 70011){
+        showResult(['The add-in is asking for a type of permission that is not recognized.']);
+    } else if (result.responseJSON.error.name
+        && result.responseJSON.error.name.indexOf('expected access_as_user') !== -1){
+        showResult(['Microsoft Office does not have permission to get Microsoft Graph data on behalf of the current user.']);
+    } else if (result.responseJSON.error.name
+        && result.responseJSON.error.name.indexOf('Microsoft Graph error') !== -1) {
+        if (!timesMSGraphErrorReceived) {
+            timesMSGraphErrorReceived = true;
+            timesGetOneDriveFilesHasRun = 0;
+            triedWithoutForceConsent = false;
+            getOneDriveFiles();
+        } else {
+            logError(result);
+        }
+    } else {
+        logError(result);
+    }
+
+}
 
 // Displays the data, assumed to be an array.
 function showResult(data) {

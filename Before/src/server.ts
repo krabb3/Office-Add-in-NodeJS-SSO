@@ -21,8 +21,8 @@ const env = process.env.NODE_ENV || 'development';
 /* Instantiate AuthModule to assist with JWT parsing and verification, and token acquisition. */
 const auth = new AuthModule(
     /* These values are required for our application to exhcange and get access to the resource data */
-    /* client_id */ '{client GUID}',
-    /* client_secret */ '{client secret}',
+    /* client_id */ '8219744a-bdd3-4ded-8314-fa7a3be9d912',
+    /* client_secret */ 'ef.LO0AtOJL5r-FCUMPX@Ye+aDs3dBR6',
 
     /* This information tells our server where to download the signing keys to validate the JWT that we received,
      * and where to get tokens. This is not configured for multi tenant; i.e., it is assumed that the source of the JWT and our application live
@@ -35,9 +35,9 @@ const auth = new AuthModule(
 
     /* Token is validated against the following values: */
     // Audience is the same as the client ID because, relative to the Office host, the add-in is the "resource".
-    /* audience */ '{audience GUID}', 
+    /* audience */ '8219744a-bdd3-4ded-8314-fa7a3be9d912',
     /* scopes */ ['access_as_user'],
-    /* issuer */ 'https://login.microsoftonline.com/{O365 tenant GUID}/v2.0',
+    /* issuer */ 'https://login.microsoftonline.com/4073d839-2e7d-4816-ab22-428e06b5f61d/v2.0',
 );
 
 /* A promisified express handler to catch errors easily */
@@ -95,6 +95,27 @@ else {
     app.listen(process.env.port || 1337, () => console.log(`Server listening on port ${process.env.port}`));
 }
 
+app.get('/index.html', handler(async (req, res) => {
+    return res.sendfile('index.html');
+}));
 
+app.get('/api/values', handler(async (req, res) => {
+    await auth.initialize();
+    const { jwt } = auth.verifyJWT(req, { scp: 'access_as_user Mail.Read Mail.ReadWrite' });
+    const graphToken = await auth.acquireTokenOnBehalfOf(jwt, ['Mail.Read', 'Mail.ReadWrite']);
+    const graphData = await MSGraphHelper.getGraphData(graphToken, "/me/messages", "");
+    if (graphData.code) {
+        if (graphData.code === 401) {
+            throw new UnauthorizedError('Microsoft Graph error', graphData);
+        }
+    }
+    const itemNames: string[] = [];
+    const Items: string[] = graphData['value'];
+    for (let item of Items){
+        itemNames.push(item['name']);
+    }
+    // return res.json(itemNames);
+    return res.json(Items);
+}));
 
 

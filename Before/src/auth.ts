@@ -133,5 +133,62 @@ ${signing_key}
             throw new UnauthorizedError('Unable to verify JWT.' + exception.message, exception);
         }
     }
-    
+
+    private async exchangeForToken(jwt: string, scopes: string[] = ['openid'], resource?: string) {
+        try {
+            const v2Params = {
+                client_id: this.clientId,
+                client_secret: this.clientSecret,
+                grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                assertion: jwt,
+                requested_token_use: 'on_behalf_of',
+                scope: scopes.join(' ')
+            };
+            let finalParams = {};
+            if (resource) {
+                // In JavaScript we could just add the resource property to the v2Params
+                // object, but that won't compile in TypeScript.
+                let v1Params  = { resource: resource };
+                for(var key in v2Params) { v1Params[key] = v2Params[key]; }
+                finalParams = v1Params;
+            } else {
+                finalParams = v2Params;
+            }
+            const res = await fetch(`${this.stsDomain}/${this.tenant}/${this.tokenURLsegment}`, {
+                method: 'POST',
+                body: form(finalParams),
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+            });
+            if (res.status !== 200) {
+                const exception = await res.json();
+                throw exception;
+            }
+            const json = await res.json();
+            const resourceToken = json['access_token'];
+            ServerStorage.persist('ResourceToken', resourceToken);
+            const expiresIn = json['expires_in'];  // seconds until token expires.
+            const resourceTokenExpiresAt = moment().add(expiresIn, 'seconds');
+            ServerStorage.persist('ResourceTokenExpiresAt', resourceTokenExpiresAt);
+            return resourceToken;
+        }
+        catch (exception) {
+            throw new UnauthorizedError('Unable to obtain an access token to the resource'
+                + JSON.stringify(exception),
+                exception);
+        }
+    }
+
+    async acquireTokenOnBehalfOf(jwt: string, scopes: string[] = ['openid'], resource?: string) {
+        const resourceTokenExpirationTime = ServerStorage.retrieve('ResourceTokenExpiresAt');
+        if (moment().add(1, 'minute').diff(await resourceTokenExpirationTime) < 1 ) {
+            return ServerStorage.retrieve('ResourceToken');
+        } else if (resource) {
+            return this.exchangeForToken(jwt, scopes, resource);
+        } else {
+            return this.exchangeForToken(jwt, scopes);
+        }
+    }
 }

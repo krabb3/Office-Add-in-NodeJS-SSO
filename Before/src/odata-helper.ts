@@ -38,9 +38,23 @@ export class ODataHelper {
                         body += d;
                     });
                 response.on('end', function () {
-					
-                    // TODO: Process the completed response from the OData endpoint
-					//       and relay the data (or error) to the caller.
+
+                    var error;
+                    if (response.statusCode === 200) {
+                        let parsedBody = JSON.parse(body);
+                        resolve(parsedBody);
+                    } else {
+                        error = new Error();
+                        error.code = response.statusCode;
+                        error.message = response.statusMessage;
+
+                        // The error body sometimes includes an empty space
+                        // before the first character, remove it or it causes an error.
+                        body = body.trim();
+                        error.bodyCode = JSON.parse(body).error.code;
+                        error.bodyMessage = JSON.parse(body).error.message;
+                        resolve(error);
+                    }
 					
                 });
             }).on('error', reject);
