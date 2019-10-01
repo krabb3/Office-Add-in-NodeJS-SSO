@@ -12,8 +12,9 @@ import * as bodyParser from 'body-parser';
 import * as cors from 'cors';
 import * as morgan from 'morgan';
 import { AuthModule } from './auth';
-import { MSGraphHelper} from './msgraph-helper';
-import { UnauthorizedError } from './errors';
+// import { MSGraphHelper} from './msgraph-helper';
+// import { UnauthorizedError } from './errors';
+// import MSGraph from 'msgraph-helper';
 
 /* Set the environment to development if not set */
 const env = process.env.NODE_ENV || 'development';
@@ -100,22 +101,53 @@ app.get('/index.html', handler(async (req, res) => {
 }));
 
 app.get('/api/values', handler(async (req, res) => {
+    const itemId = req.query.itemId;
     await auth.initialize();
-    const { jwt } = auth.verifyJWT(req, { scp: 'access_as_user Mail.Read Mail.ReadWrite' });
-    const graphToken = await auth.acquireTokenOnBehalfOf(jwt, ['Mail.Read', 'Mail.ReadWrite']);
-    const graphData = await MSGraphHelper.getGraphData(graphToken, "/me/messages", "");
-    if (graphData.code) {
-        if (graphData.code === 401) {
-            throw new UnauthorizedError('Microsoft Graph error', graphData);
-        }
-    }
-    const itemNames: string[] = [];
-    const Items: string[] = graphData['value'];
-    for (let item of Items){
-        itemNames.push(item['name']);
-    }
-    // return res.json(itemNames);
-    return res.json(Items);
+    const { jwt } = auth.verifyJWT(req, { scp: 'access_as_user' });
+    const graphToken = await auth.acquireTokenOnBehalfOf(jwt, ['Mail.Read', 'Mail.ReadWrite', 'Mail.ReadWrite.Shared', 'Mail.Read.Shared']);
+    //EMAIL is UPN //webtest inbox id AQMkAGE1Nzg2NDEzLTNhMDYtNDI2Ny05MmUwLTdjNDhiOTAyNGU4YwAuAAADGoJ7hA9-b0CEuecqybtcSQEAUQZIk6O2ZEadDoYxLazeJgAAAgEMAAAA
+    // const graphData = await MSGraphHelper.getGraphData(graphToken, "/me/messages/"+itemId+"/move", "");
+    // const graphData = await MSGraphHelper.getGraphData(graphToken, "/users/webtest@bertschitest.onmicrosoft.com/mailFolders", "");
+
+    const Url = 'https://graph.microsoft.com/v1.0/me/messages/'+itemId+'/move';
+    const Data = {
+        destinationId: 'AQMkAGE1Nzg2NDEzLTNhMDYtNDI2Ny05MmUwLTdjNDhiOTAyNGU4YwAuAAADGoJ7hA9-b0CEuecqybtcSQEAUQZIk6O2ZEadDoYxLazeJgAAAgEMAAAA'
+    };
+    const otherPram = {
+        headers:{
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            Authorization: 'Bearer ' + graphToken
+        },
+        method: 'POST',
+        body: JSON.stringify(Data)
+    };
+    fetch(Url, otherPram).then(data=>{
+       return data.json();
+    }).then(res=>{
+        console.log(res);
+    }).then(error=>{
+        console.log(error)
+    });
+
+    // await MSGraph.Init(this.context.msGraphClientFactory, 'v1.0');
+    // let Items = await MSGraph.Post('/me/messages/move', {destinationId: 'AQMkAGE1Nzg2NDEzLTNhMDYtNDI2Ny05MmUwLTdjNDhiOTAyNGU4YwAuAAADGoJ7hA9-b0CEuecqybtcSQEAUQZIk6O2ZEadDoYxLazeJgAAAgEMAAAA', graphToken});
+
+    // const graphData = await MSGraphHelper.getGraphData(graphToken, "/me/messages", "");
+    // console.log(graphData);
+    // if (graphData.code) {
+    //     if (graphData.code === 401) {
+    //         throw new UnauthorizedError('Microsoft Graph error', graphData);
+    //     }
+    // }
+    // const itemNames: string[] = [];
+    // const Items: string[] = graphData['value'];
+    // for (let item of Items){
+    //     itemNames.push(item['name']);
+    // }
+    // // return res.json(itemNames);
+    // return res.json(Items);
 }));
+
 
 

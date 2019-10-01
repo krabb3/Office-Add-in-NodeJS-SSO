@@ -9,29 +9,31 @@ Office.initialize = function (reason) {
     $(document).ready(function () {
     // After the DOM is loaded, app-specific code can run.
     // Add any initialization logic to this function.
-         $("#getGraphAccessTokenButton").click(function () {
+        console.log(Office.context.mailbox.item.itemId);
+        // console.log();
+        $("#getGraphAccessTokenButton").click(function () {
+             getOneDriveFiles(Office.context.mailbox.item.itemId);
          });
-        getOneDriveFiles();
-        console.log(Office.context.mailbox.item)
     });
-}
+};
 
 var timesGetOneDriveFilesHasRun = 0;
 var triedWithoutForceConsent = false;
 var timesMSGraphErrorReceived = false;
 
-function getOneDriveFiles() {
+function getOneDriveFiles(itemId) {
     timesGetOneDriveFilesHasRun++;
     triedWithoutForceConsent = true;
-    getDataWithToken({ forceConsent: false });
+    getDataWithToken({ forceConsent: false }, itemId);
+    // getWebtestFolders({ forceConsent: false });
 }
 
-function getDataWithToken(options) {
+function getDataWithToken(options, itemId) {
     Office.context.auth.getAccessTokenAsync(options,
         function (result) {
             if (result.status === "succeeded") {
                 var accessToken = result.value;
-                getData("/api/values", accessToken);
+                getData("/api/values", accessToken, itemId);
                 // getData("/me/messages", accessToken);
             }
             else {
@@ -40,9 +42,9 @@ function getDataWithToken(options) {
         });
 }
 
-function getData(relativeUrl, accessToken) {
+function getData(relativeUrl, accessToken,itemId) {
     $.ajax({
-        url: relativeUrl,
+        url: relativeUrl+'?itemId='+itemId,
         headers: { "Authorization": "Bearer " + accessToken },
         type: "GET"
     })
